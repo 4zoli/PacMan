@@ -1,137 +1,155 @@
-///azoli,horvath.oliver.zoltan@stud.u-szeged.hu
 import game.pm.strategies.Strategy;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 import game.engine.utils.Pair;
 import game.pm.PMAction;
 import game.pm.PMGame;
+import game.pm.PMPlayer;
 import game.pm.PMGame.DIRECTION;
 import game.pm.PMGame.TILES;
 
 public class Agent extends Strategy {
-	/**
-	 * Letaroljuk a terkepen levo dolgokat egy altalunk definialt pontrendszer alapjan azert,
-	 * hogy ezek alapjan szamoljuk majd ki, hogy merre eri meg a legjobban menni. 
-	 */
-	private final static Map<Integer, Integer> TILE_SCORE;
-	static {
-		TILE_SCORE = new HashMap<>();
-		TILE_SCORE.put(TILES.EMPTY, -1);
-		TILE_SCORE.put(TILES.FOOD, 100);
-		TILE_SCORE.put(TILES.FRIGHT_BLINKY, 410);
-		TILE_SCORE.put(TILES.FRIGHT_CLYDE, 410);
-		TILE_SCORE.put(TILES.FRIGHT_INKY, 410);
-		TILE_SCORE.put(TILES.FRIGHT_PINKY, 410);
-		TILE_SCORE.put(TILES.ENERGIZER, 20);
-		TILE_SCORE.put(TILES.BLINKY, -10);
-		TILE_SCORE.put(TILES.CLYDE, -10);
-		TILE_SCORE.put(TILES.INKY, -10);
-		TILE_SCORE.put(TILES.PINKY, -10);
-	}
-	/**
-	 * Sulyozzuk vele azt az iranyt ahonnan jottunk, hogy ne forogjon oda vissza egyhelyben. 
-	 */
-	private int lastDirection = -1;
 
-	@Override
-	public int getDirection(int id, PMGame game) {
-		final Set<Integer> scoredDirections = this.scoreDirections(id, game);
+    private int lastDirection = -1;
 
-		/**
-		 * Vegigiteralunk a bescoreozott utvonalakon, 
-		 * es az elso olyan legtobb pontot ero fele fogunk menni ahol nem halna meg pacman.
-		 */
-		for (Integer direction : scoredDirections) {
-			PMGame cloned = game.clone();
-			for (int j = 0; j < PMGame.TILES.SIZE / cloned.pacmans[id].getSpeed() + 1; j++) {
-				cloned.setAction(cloned.pacmans[id], new PMAction(direction), 0);
-			}
-			/**
-			 * Ha Pacman oda lepne ahol meghal, akkor nem lep oda. 
-			 */
-			if (game.lives > cloned.lives) {
-				continue;
-			}
-			lastDirection = direction;
-			return direction;
-		}
-		/**
-		 * Ha ide elerunk, akkor nem tud elmenekülni a szellemektõl igy adunk egy iranyt neki felfelé, hisz ugyis meghal. 
-		 */
-		return 0;
-	}
+    @Override
+    public int getDirection(int id, PMGame game) {
 
-	/**
-	 * Besulyozzuk az iranyokat aszerint, hogy egyes arra levo kajak stb mennyit ernek.
-	 * (Ezt taroltuk le fent egy HashMapben.) 
-	 * @param id
-	 * @param game
-	 * @return
-	 */
-	private Set<Integer> scoreDirections(int id, PMGame game) {
-		final Pair<Integer, Integer> position = game.pacmans[id].getTilePosition();
-		List<Pair<Integer, Integer>> scorePairs = new ArrayList<>(4);
+        // step1
+        final Set<Integer> validDirections = this.getValidDirections(game.pacmans[id]);
 
-		for (int direction = 0; direction < 4; direction++) {
-			int score = 0;
-			int steps = 0;
+        // step2
+        final Collection<Integer> sortedDirections = this.sortDirections(validDirections, id, game);
+        // step 3
+        // szimulaljunk es nezzuk meg hogy melyik a legjobb
+        for (Integer direction : sortedDirections) {
+            PMGame cloned = game.clone();
+            for (int j = 0; j < PMGame.TILES.SIZE / cloned.pacmans[id].getSpeed() + 1; j++) {
+                cloned.setAction(cloned.pacmans[id], new PMAction(direction), 0);
+            }
 
-			/**
-			 * Jelenlegi poziciotol elnezunk a falakig a negy iranyba
-			 * es osszeszamoljuk hany pontot erhetnenk el addig a mi 
-			 * ertekelesunk alapjan. 
-			 */
-			switch (direction) {
-			case DIRECTION.UP:
-				for (int i = position.first - 1; game.getTileAt(i, position.second) != TILES.WALL; i--) {
-					score += TILE_SCORE.getOrDefault(game.getTileAt(i, position.second), 0);
-					steps++;				
-				}
-				break;
-			case DIRECTION.DOWN:
-				for (int i = position.first + 1; game.getTileAt(i, position.second) != TILES.WALL; i++) {
-					score += TILE_SCORE.getOrDefault(game.getTileAt(i, position.second), 0);
-					steps++;
-				}
-				break;
-			case DIRECTION.LEFT:
-				for (int i = position.second - 1; game.getTileAt(position.first, i) != TILES.WALL; i--) {
-					score += TILE_SCORE.getOrDefault(game.getTileAt(position.first, i), 0);
-					steps++;
-				}
-				break;
-			case DIRECTION.RIGHT:
-				for (int i = position.second + 1; game.getTileAt(position.first, i) != TILES.WALL; i++) {
-					score += TILE_SCORE.getOrDefault(game.getTileAt(position.first, i), 0);
-					steps++;
-				}
-				break;
-			default:
-				break;
-			}
-			
-			/**
-			 * Ertekeljuk ha ugyanabba az iranyba tartunk, mint amerre  eddig. Ezzel 
-			 * csökkentjük az oda vissza cikazasokat. A step-s !=0 pedig azert kell, mert igy nem allunk meg üres folyoson. 
-			 */
-			score += steps * 2;
-			if (direction == lastDirection && steps != 0) {
-				score += 90;
-			}
-			scorePairs.add(new Pair<Integer, Integer>(direction,score));
-		}
-		/**
-		 * Csokkenosorban adjuk vissza az utvonalakat score szerint azert, 
-		 * hogy a legjobban megero fele menjunk ha lehet. 
-		 */
-		return new LinkedHashSet<>(scorePairs.stream()
-				.sorted((p1, p2) -> p2.second - p1.second)
-				.map(p -> p.first)
-				.collect(Collectors.toList()));
-	}
+            if (game.lives > cloned.lives) {
+                continue;
+            }
+
+            lastDirection = direction;
+            return direction;
+        }
+        // fucked nincs olyan lepes amibe nem halunk bele
+        return 0;
+    }
+
+    private Set<Integer> getValidDirections(PMPlayer player) {
+        return IntStream.range(0, 4)
+                .boxed()
+                .collect(Collectors.toSet());
+    }
+
+    private Collection<Integer> sortDirections(Set<Integer> directions, int id, PMGame game) {
+        final Pair<Integer, Integer> position = game.pacmans[id].getTilePosition();
+        List<Pair<Integer, Double>> collect = directions.parallelStream()
+                .map(direction -> {
+                    double score = firstFood(position.first, position.second, direction, game);
+                    if (lastDirection == direction) {
+                         score*= 0.93d;
+                    }
+
+                    return new Pair<Integer, Double>(direction, score);
+                })
+                .sorted((p2, p1) -> (int) (p2.second - p1.second))
+                .collect(Collectors.toList());
+
+
+        Optional<Pair<Integer, Double>> lastRoute = collect.stream().filter(p -> p.first == lastDirection && p.second < Integer.MAX_VALUE).findFirst();
+
+        if(lastRoute.isPresent() && Math.abs(collect.get(0).second-lastRoute.get().second) <10){
+            collect.add(0,lastRoute.get());
+        }
+
+        return collect.stream().map(p -> p.first).collect(Collectors.toList());
+    }
+
+    private int firstFood(int x, int y, int direction, PMGame game) {
+        return this.firstFood(x, y, direction, direction, game, 0, new HashSet<>());
+    }
+
+    private int firstFood(int x, int y, int prevDirection, int direction, PMGame game, int depth, Collection<Integer> checked) {
+        //revers direction detection
+        if (Math.abs(prevDirection - direction) == 2 && prevDirection != -1) {
+            return Integer.MAX_VALUE;
+        }
+
+        //step to the direction
+        final int nextX;
+        final int nextY;
+        if (direction == DIRECTION.UP) {
+            nextX = x - 1;
+            nextY = y;
+        } else if (direction == DIRECTION.DOWN) {
+            nextX = x + 1;
+            nextY = y;
+        } else if (direction == DIRECTION.LEFT) {
+            nextX = x;
+            nextY = y - 1;
+        } else {
+            nextX = x;
+            nextY = y + 1;
+        }
+
+        //to limit the thinking time.
+        depth++;
+        if (depth >= 120) {
+            return Integer.MAX_VALUE;
+        }
+
+        final int check = (String.valueOf(nextX) + String.valueOf(nextY)).hashCode();
+        if (checked.contains(check)) {
+            return Integer.MAX_VALUE;
+        }
+
+        checked.add(check);
+
+        //check if its a wall
+        if (game.getTileAt(nextX, nextY) == TILES.WALL || game.getTileAt(nextX, nextY) == TILES.SLOW) {
+            return Integer.MAX_VALUE;
+        }
+
+        //food check
+        if (isEatAble(game.getTileAt(nextX, nextY))) {
+            return 1;
+        } else {
+            //check other directions
+            final int min = getMin(
+                    firstFood(nextX, nextY, direction, DIRECTION.UP, game, depth, checked),
+                    firstFood(nextX, nextY, direction, DIRECTION.DOWN, game, depth, checked),
+                    firstFood(nextX, nextY, direction, DIRECTION.LEFT, game, depth, checked),
+                    firstFood(nextX, nextY, direction, DIRECTION.RIGHT, game, depth, checked)
+            );
+
+            return min != Integer.MAX_VALUE ? min + 1 : min;
+        }
+    }
+
+    private int getMin(int... i) {
+        return IntStream.of(i).min().getAsInt();
+    }
+
+    private boolean isEatAble(int tileType) {
+
+        switch (tileType) {
+            case TILES.ENERGIZER:
+            case TILES.FOOD:
+            case TILES.FRIGHT_BLINKY:
+            case TILES.FRIGHT_CLYDE:
+            case TILES.FRIGHT_INKY:
+            case TILES.FRIGHT_PINKY:
+                return true;
+            default:
+                return false;
+        }
+
+    }
 }
