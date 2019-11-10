@@ -15,12 +15,10 @@ import game.pm.PMGame.TILES;
 
 public class Agent extends Strategy {
 	/**
-	 * 
+	 * Letaroljuk a terkepen levo dolgokat egy altalunk definialt pontrendszer alapjan azert,
+	 * hogy ezek alapjan szamoljuk majd ki, hogy merre eri meg a legjobban menni. 
 	 */
 	private final static Map<Integer, Integer> TILE_SCORE;
-	/**
-	 * 
-	 */
 	static {
 		TILE_SCORE = new HashMap<>();
 		TILE_SCORE.put(TILES.EMPTY, -1);
@@ -35,7 +33,6 @@ public class Agent extends Strategy {
 		TILE_SCORE.put(TILES.INKY, -10);
 		TILE_SCORE.put(TILES.PINKY, -10);
 	}
-	
 	/**
 	 * Sulyozzuk vele azt az iranyt ahonnan jottunk, hogy ne forogjon oda vissza egyhelyben. 
 	 */
@@ -46,7 +43,8 @@ public class Agent extends Strategy {
 		final Set<Integer> scoredDirections = this.scoreDirections(id, game);
 
 		/**
-		 * Végignézzük a négy irányt 
+		 * Vegigiteralunk a bescoreozott utvonalakon, 
+		 * es az elso olyan legtobb pontot ero fele fogunk menni ahol nem halna meg pacman.
 		 */
 		for (Integer direction : scoredDirections) {
 			PMGame cloned = game.clone();
@@ -54,90 +52,82 @@ public class Agent extends Strategy {
 				cloned.setAction(cloned.pacmans[id], new PMAction(direction), 0);
 			}
 			/**
-			 * Ha Pacman olyan csempére lépne, ahol meghal, akkor nem lép oda. 
+			 * Ha Pacman oda lepne ahol meghal, akkor nem lep oda. 
 			 */
 			if (game.lives > cloned.lives) {
 				continue;
 			}
-
-			/**
-			 * Mentjük a legutolsó irányt azért, hogy súlyozhassuk 
-			 * és kevésbé akarjon visszafordulni. 
-			 */
 			lastDirection = direction;
 			return direction;
 		}
 		/**
-		 * Ha ide elerunk, akkor nem tud elmenekülni a szellemektõl igy adunk egy iranyt neki felfelé, úgyis meghal. 
+		 * Ha ide elerunk, akkor nem tud elmenekülni a szellemektõl igy adunk egy iranyt neki felfelé, hisz ugyis meghal. 
 		 */
 		return 0;
 	}
 
+	/**
+	 * Besulyozzuk az iranyokat aszerint, hogy egyes arra levo kajak stb mennyit ernek.
+	 * (Ezt taroltuk le fent egy HashMapben.) 
+	 * @param id
+	 * @param game
+	 * @return
+	 */
 	private Set<Integer> scoreDirections(int id, PMGame game) {
-		/**
-		 * Pacman jelenlegi pozicioja
-		 */
 		final Pair<Integer, Integer> position = game.pacmans[id].getTilePosition();
-
-		/**
-		 * Irányokhoz fogunk eltárolni score-okat. 
-		 */
 		List<Pair<Integer, Integer>> scorePairs = new ArrayList<>(4);
 
-		/**
-		 * Végignézzük a négy lehetséges irányt, és besúlyozzuk õket aszerint, hogy melyik irányban tudunk elérni több score-t.
-		 */
 		for (int direction = 0; direction < 4; direction++) {
 			int score = 0;
 			int steps = 0;
 
 			/**
-			 * Adott pozición állva, megnézzük mind a négy irányba a mezõket és score-t számolunk amíg falat nem érünk. 
+			 * Jelenlegi poziciotol elnezunk a falakig a negy iranyba
+			 * es osszeszamoljuk hany pontot erhetnenk el addig a mi 
+			 * ertekelesunk alapjan. 
 			 */
-			if (direction == DIRECTION.UP) {
+			switch (direction) {
+			case DIRECTION.UP:
 				for (int i = position.first - 1; game.getTileAt(i, position.second) != TILES.WALL; i--) {
 					score += TILE_SCORE.getOrDefault(game.getTileAt(i, position.second), 0);
-					/**
-					 * Súlyozzuk a lépéseket, enélkül megtudna állni ha egyformák a score-ok az irányokba. 
-					 */
 					steps++;				
 				}
-			}
-			else if (direction == DIRECTION.DOWN) {
+				break;
+			case DIRECTION.DOWN:
 				for (int i = position.first + 1; game.getTileAt(i, position.second) != TILES.WALL; i++) {
 					score += TILE_SCORE.getOrDefault(game.getTileAt(i, position.second), 0);
 					steps++;
 				}
-			}
-			else if (direction == DIRECTION.LEFT) {
+				break;
+			case DIRECTION.LEFT:
 				for (int i = position.second - 1; game.getTileAt(position.first, i) != TILES.WALL; i--) {
 					score += TILE_SCORE.getOrDefault(game.getTileAt(position.first, i), 0);
 					steps++;
 				}
-			}
-			else if (direction == DIRECTION.RIGHT) {
+				break;
+			case DIRECTION.RIGHT:
 				for (int i = position.second + 1; game.getTileAt(position.first, i) != TILES.WALL; i++) {
 					score += TILE_SCORE.getOrDefault(game.getTileAt(position.first, i), 0);
 					steps++;
 				}
+				break;
+			default:
+				break;
 			}
 			
 			/**
-			 * Számoljuk adott irányban a lépéseket azért, hogy ne álljunk meg falnál. 
+			 * Ertekeljuk ha ugyanabba az iranyba tartunk, mint amerre  eddig. Ezzel 
+			 * csökkentjük az oda vissza cikazasokat. A step-s !=0 pedig azert kell, mert igy nem allunk meg üres folyoson. 
 			 */
 			score += steps * 2;
-			
-			/**
-			 * Értékeljük ha ugyanabba az irányba tartunk, mint amerre eddig. Ezzel 
-			 * csökkentjük az oda vissza cikázásokat. A step-s != 0 pedig azért kell, mert így nem állunk meg üres folyosón. 
-			 */
 			if (direction == lastDirection && steps != 0) {
 				score += 90;
 			}
 			scorePairs.add(new Pair<Integer, Integer>(direction,score));
 		}
 		/**
-		 * 
+		 * Csokkenosorban adjuk vissza az utvonalakat score szerint azert, 
+		 * hogy a legjobban megero fele menjunk ha lehet. 
 		 */
 		return new LinkedHashSet<>(scorePairs.stream()
 				.sorted((p1, p2) -> p2.second - p1.second)
